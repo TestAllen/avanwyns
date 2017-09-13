@@ -1,0 +1,238 @@
+#!/bin/bash 
+CLUSTERCOUNT=1
+LATESTRUN=150
+##########################################################################
+TOTALTRAJ=0
+TOTALHITS=0
+MONHITS1=0
+MONHITS2=0
+MONHITS3=0
+MONHITS4=0
+ORIHITSA=0
+ORIHITSB=0
+ORIHITSC=0
+ORIHITSD=0
+CLUSTERHITS1=0
+CLUSTERHITS2=0
+CLUSTERHITS3=0
+CLUSTERHITS4=0
+CLUSTERHITS5=0
+CLUSTERHITS6=0
+CLUSTERHITS7=0
+CLUSTERHITS8=0
+CLUSTERHITS9=0
+CLUSTERHITS10=0
+HITS1A=0
+HITS1B=0
+HITS1C=0
+HITS1D=0
+HITS2A=0
+HITS2B=0
+HITS2C=0
+HITS2D=0
+HITS3A=0
+HITS3B=0
+HITS3C=0
+HITS3D=0
+HITS4A=0
+HITS4B=0
+HITS4C=0
+HITS4D=0
+HITS5A=0
+HITS5B=0
+HITS5C=0
+HITS5D=0
+HITS6A=0
+HITS6B=0
+HITS6C=0
+HITS6D=0
+HITS7A=0
+HITS7B=0
+HITS7C=0
+HITS7D=0
+HITS8A=0
+HITS8B=0
+HITS8C=0
+HITS8D=0
+HITS9A=0
+HITS9B=0
+HITS9C=0
+HITS9D=0
+HITS10A=0
+HITS10B=0
+HITS10C=0
+HITS10D=0
+TRAJ1A=0 
+TRAJ1B=0 
+TRAJ1C=0 
+TRAJ1D=0 
+TRAJ2A=0
+TRAJ2B=0
+TRAJ2C=0
+TRAJ2D=0
+TRAJ3A=0
+TRAJ3B=0
+TRAJ3C=0
+TRAJ3D=0
+TRAJ4A=0
+TRAJ4B=0
+TRAJ4C=0
+TRAJ4D=0
+TRAJ5A=0
+TRAJ5B=0
+TRAJ5C=0
+TRAJ5D=0
+TRAJ6A=0
+TRAJ6B=0
+TRAJ6C=0
+TRAJ6D=0
+TRAJ7A=0 
+TRAJ7B=0 
+TRAJ7C=0 
+TRAJ7D=0 
+TRAJ8A=0 
+TRAJ8B=0 
+TRAJ8C=0 
+TRAJ8D=0 
+TRAJ9A=0 
+TRAJ9B=0 
+TRAJ9C=0 
+TRAJ9D=0 
+TRAJ10A=0
+TRAJ10B=0
+TRAJ10C=0
+TRAJ10D=0
+echo '' > tempfile
+while [ $CLUSTERCOUNT -le 10 ]; do
+	for orient in A B C D; do
+		if [ -d $CLUSTERCOUNT${orient}/finished/ ]; then
+			cd $CLUSTERCOUNT${orient}/finished/
+			if [ -e m1-strip.in ]; then
+				TRAJCLUST=`grep -c "trajin" m1-strip.in`
+				for ((i=1; i<=TRAJCLUST; i++)); do
+					let TRAJ${CLUSTERCOUNT}${orient}=TRAJ$CLUSTERCOUNT$orient+1
+				done
+			fi
+			if [ -e m2-strip.in ]; then
+                                TRAJCLUST=`grep -c "trajin" m2-strip.in`
+				for ((i=1; i<=TRAJCLUST; i++)); do
+                                        let TRAJ${CLUSTERCOUNT}${orient}=TRAJ$CLUSTERCOUNT$orient+1
+                                done
+                        fi
+			if [ -e m3-strip.in ]; then
+				TRAJCLUST=`grep -c "trajin" m3-strip.in`
+				for ((i=1; i<=TRAJCLUST; i++)); do
+                                        let TRAJ${CLUSTERCOUNT}${orient}=TRAJ$CLUSTERCOUNT$orient+1
+                                done
+                        fi
+			if [ -e m4-strip.in ]; then
+				TRAJCLUST=`grep -c "trajin" m4-strip.in`
+				for ((i=1; i<=TRAJCLUST; i++)); do
+                                        let TRAJ${CLUSTERCOUNT}${orient}=TRAJ$CLUSTERCOUNT$orient+1
+                                done
+                        fi
+			cd ../../
+		fi
+		FIRSTRUN=100
+		echo '' >> tempfile
+		echo $CLUSTERCOUNT${orient} >> tempfile
+		while [ $FIRSTRUN -le $LATESTRUN ]; do
+			if [ -d "$CLUSTERCOUNT${orient}/$FIRSTRUN/analysis/" ]; then
+				cd $CLUSTERCOUNT${orient}/$FIRSTRUN/analysis/
+				lig1=`awk 'FNR == 1 {print $1}' SWITCH`
+                		lig2=`awk 'FNR == 2 {print $1}' SWITCH`
+                		lig3=`awk 'FNR == 3 {print $1}' SWITCH`
+                		lig4=`awk 'FNR == 4 {print $1}' SWITCH`
+				echo 'Run' $FIRSTRUN  >> ../../../tempfile
+				echo '  '  $lig1 '   ' $lig2 '   ' $lig3 '   ' $lig4 > ../../../tempfile2
+				sed -i -e 's/2/M/g' ../../../tempfile2 
+				sed -i -e 's/1/S/g' ../../../tempfile2
+				sed -i -e 's/0/D/g' ../../../tempfile2
+				line=$(head -1 ../../../tempfile2)
+				echo "$(cat ../../../tempfile)$line" > ../../../tempfile
+				rm ../../../tempfile2
+				MONOMER=1
+				while [ $MONOMER -le 4 ]; do
+					if [ $((lig$MONOMER)) -eq 1 ]; then
+						let TOTALHITS=TOTALHITS+1
+						let MONHITS${MONOMER}=MONHITS$MONOMER+1
+						let ORIHITS${orient}=ORIHITS$orient+1
+						let CLUSTERHITS${CLUSTERCOUNT}=CLUSTERHITS$CLUSTERCOUNT+1
+						let HITS${CLUSTERCOUNT}${orient}=HITS$CLUSTERCOUNT$orient+1
+					fi 
+					let MONOMER=MONOMER+1
+				done 
+				cd ../../../ 	
+				let TOTALTRAJ=$TOTALTRAJ+4
+			fi
+		
+			let FIRSTRUN=FIRSTRUN+1
+		done
+	done
+	let CLUSTERCOUNT=CLUSTERCOUNT+1
+done
+
+echo 'Total Trajectories:' $TOTALTRAJ > count.out
+echo 'Total Hits:' $TOTALHITS >> count.out
+echo 'Monomer1 Hits:' $MONHITS1 >> count.out
+echo 'Monomer2 Hits:' $MONHITS2 >> count.out
+echo 'Monomer3 Hits:' $MONHITS3 >> count.out
+echo 'Monomer4 Hits:' $MONHITS4 >> count.out
+echo 'Orient A Hits:' $ORIHITSA >> count.out
+echo 'Orient B Hits:' $ORIHITSB >> count.out
+echo 'Orient C Hits:' $ORIHITSC >> count.out
+echo 'Orient D Hits:' $ORIHITSD >> count.out
+echo 'Cluster 1 Hits:' $CLUSTERHITS1 >> count.out
+echo 'Cluster 2 Hits:' $CLUSTERHITS2 >> count.out
+echo 'Cluster 3 Hits:' $CLUSTERHITS3 >> count.out
+echo 'Cluster 4 Hits:' $CLUSTERHITS4 >> count.out
+echo 'Cluster 5 Hits:' $CLUSTERHITS5 >> count.out
+echo 'Cluster 6 Hits:' $CLUSTERHITS6 >> count.out
+echo 'Cluster 7 Hits:' $CLUSTERHITS7 >> count.out
+echo 'Cluster 8 Hits:' $CLUSTERHITS8 >> count.out
+echo 'Cluster 9 Hits:' $CLUSTERHITS9 >> count.out
+echo 'Cluster 10 Hits:' $CLUSTERHITS10 >> count.out
+echo '1A Hits:' $HITS1A '    ' '1A Traj:' $TRAJ1A >> count.out
+echo '1B Hits:' $HITS1B '    ' '1B Traj:' $TRAJ1B >> count.out 
+echo '1C Hits:' $HITS1C '    ' '1C Traj:' $TRAJ1C >> count.out
+echo '1D Hits:' $HITS1D '    ' '1D Traj:' $TRAJ1D >> count.out
+echo '2A Hits:' $HITS2A '    ' '2A Traj:' $TRAJ2A >> count.out
+echo '2B Hits:' $HITS2B '    ' '2B Traj:' $TRAJ2B >> count.out
+echo '2C Hits:' $HITS2C '    ' '2C Traj:' $TRAJ2C >> count.out
+echo '2D Hits:' $HITS2D '    ' '2D Traj:' $TRAJ2D >> count.out
+echo '3A Hits:' $HITS3A '    ' '3A Traj:' $TRAJ3A >> count.out
+echo '3B Hits:' $HITS3B '    ' '3B Traj:' $TRAJ3B >> count.out
+echo '3C Hits:' $HITS3C '    ' '3C Traj:' $TRAJ3C >> count.out
+echo '3D Hits:' $HITS3D '    ' '3D Traj:' $TRAJ3D >> count.out
+echo '4A Hits:' $HITS4A '    ' '4A Traj:' $TRAJ4A >> count.out
+echo '4B Hits:' $HITS4B '    ' '4B Traj:' $TRAJ4B >> count.out
+echo '4C Hits:' $HITS4C '    ' '4C Traj:' $TRAJ4C >> count.out
+echo '4D Hits:' $HITS4D '    ' '4D Traj:' $TRAJ4D >> count.out
+echo '5A Hits:' $HITS5A '    ' '5A Traj:' $TRAJ5A >> count.out
+echo '5B Hits:' $HITS5B '    ' '5B Traj:' $TRAJ5B >> count.out
+echo '5C Hits:' $HITS5C '    ' '5C Traj:' $TRAJ5C >> count.out
+echo '5D Hits:' $HITS5D '    ' '5D Traj:' $TRAJ5D >> count.out
+echo '6A Hits:' $HITS6A '    ' '6A Traj:' $TRAJ6A >> count.out
+echo '6B Hits:' $HITS6B '    ' '6B Traj:' $TRAJ6B >> count.out
+echo '6C Hits:' $HITS6C '    ' '6C Traj:' $TRAJ6C >> count.out
+echo '6D Hits:' $HITS6D '    ' '6D Traj:' $TRAJ6D >> count.out
+echo '7A Hits:' $HITS7A '    ' '7A Traj:' $TRAJ7A >> count.out
+echo '7B Hits:' $HITS7B '    ' '7B Traj:' $TRAJ7B >> count.out
+echo '7C Hits:' $HITS7C '    ' '7C Traj:' $TRAJ7C >> count.out
+echo '7D Hits:' $HITS7D '    ' '7D Traj:' $TRAJ7D >> count.out
+echo '8A Hits:' $HITS8A '    ' '8A Traj:' $TRAJ8A >> count.out
+echo '8B Hits:' $HITS8B '    ' '8B Traj:' $TRAJ8B >> count.out
+echo '8C Hits:' $HITS8C '    ' '8C Traj:' $TRAJ8C >> count.out
+echo '8D Hits:' $HITS8D '    ' '8D Traj:' $TRAJ8D >> count.out
+echo '9A Hits:' $HITS9A '    ' '9A Traj:' $TRAJ9A >> count.out
+echo '9B Hits:' $HITS9B '    ' '9B Traj:' $TRAJ9B >> count.out
+echo '9C Hits:' $HITS9C '    ' '9C Traj:' $TRAJ9C >> count.out
+echo '9D Hits:' $HITS9D '    ' '9D Traj:' $TRAJ9D >> count.out
+echo '10A Hits:' $HITS10A '   ' '10A Traj:' $TRAJ10A >> count.out
+echo '10B Hits:' $HITS10B '   ' '10B Traj:' $TRAJ10B >> count.out
+echo '10C Hits:' $HITS10C '   ' '10C Traj:' $TRAJ10C >> count.out
+echo '10D Hits:' $HITS10D '   ' '10D Traj:' $TRAJ10D >> count.out
+echo '' >> count.out
+echo '       Mon1  Mon2  Mon3  Mon4' >> count.out
+cat tempfile >> count.out
+rm tempfile
