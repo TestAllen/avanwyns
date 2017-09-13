@@ -1,4 +1,5 @@
 #!/bin/bash 
+#this is a bad change dude
 CLUSTERCOUNT=1
 LATESTRUN=150
 ##########################################################################
