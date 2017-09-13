@@ -1,0 +1,53 @@
+#!/bin/bash -x
+
+BDTOTAL=110
+# total number of bd runs
+HIS2PDB=/home/apark/postrunbash/avw-nhis2pdbs
+# location of nhis2pdb script
+LPQR=/home/apark/bdinput/ligand/per.pqr
+#location of ligand .pqr file
+
+BDCOUNT=1
+while [ $BDCOUNT -le $BDTOTAL ]; do
+	cd $BDCOUNT
+     	COUNT1=1
+        while [ $COUNT1 -le 4 ]; do
+        	COUNT2=1
+            	while [ $COUNT2 -le 4 ]; do
+                	if [ $BDCOUNT -eq 1 ]; then
+                       		grep '#' fort.55 > ../hits.$COUNT1.$COUNT2.ppdb
+                	fi
+			LINE=`wc -l monomer$COUNT1\_orient$COUNT2\.out | awk '{print $1}'`
+			if [ $LINE -gt 7000 ]; then
+                        	TEMP=`awk 'NF==18' monomer$COUNT1\_orient$COUNT2\.out`
+				if [ -n "$TEMP" ]; then
+					echo "$TEMP" >> ../hits.$COUNT1.$COUNT2.ppdb
+                        	fi
+			else
+				cat monomer$COUNT1\_orient$COUNT2\.out >> ../hits.$COUNT1.$COUNT2.ppdb
+			fi
+                	let COUNT2=COUNT2+1
+            	done
+            	let COUNT1=COUNT1+1
+        done
+     	cd ..
+     	let BDCOUNT=BDCOUNT+1
+done
+COUNT3=1
+while [ $COUNT3 -le 4 ]; do
+        COUNT4=1
+        while [ $COUNT4 -le 4 ]; do
+                mkdir Monomer$COUNT3\_Orient$COUNT4
+                cd Monomer$COUNT3\_Orient$COUNT4
+                HITLINES=`grep -c '0.000' ../hits."$COUNT3"."$COUNT4".ppdb`
+                echo 'hits for' Monomer$COUNT3\_Orient$COUNT4\: $HITLINES  >> ../runset.out
+		$HIS2PDB ../hits.$COUNT3.$COUNT4.ppdb $LPQR P $HITLINES
+                cd ..
+                let TOTALHITS=TOTALHITS+HITLINES
+                let COUNT4=COUNT4+1
+        done
+        let COUNT3=COUNT3+1
+done
+echo 'Total Hits:' $TOTALHITS >> runset.out
+echo done
+
