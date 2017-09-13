@@ -1,0 +1,5 @@
+set num_steps [molinfo 0 get numframes]
+for {set frame 0} {$frame < $num_steps} {incr frame} {
+        set ligs [atomselect 0 all frame $frame]
+	        $ligs move $M}
+                          
