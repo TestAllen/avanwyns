@@ -1,0 +1,385 @@
+#!/bin/bash
+
+#################VARIABLES######################
+
+####MUST CHANGE THESE VARIABLE####
+#clusters to trajin
+CLUSTERS="1C"
+
+#number of expected frames
+EXPECTED=7000
+
+#number of expected frames in complete mdcrd divided by 25000
+#round up to greatest whole integer
+NUM_REP=1
+
+#walltime, nodes, and ppn for MMPBSA.py.MPI
+#1 core will process 250 frames every hour on average 
+#add an extra 5 hours to walltime 
+WALLTIME="5:00:00"
+NODES="10"
+PPN="4"
+CORES=$((NODES * PPN))
+
+#base names for trajout files
+#you will get 4 files with names $BASENAME-1.mdcrd ... $BASENAME-4.mdcrd
+#the complete mdcrd of all 4 monomers will be named after the $MASTER variable
+BASENAME="PER_monomer"
+MASTER="master.mdcrd"
+
+#walltime for BASENAME.mdcrds
+#you must know how many frames are in each BASENAME.mdcrd
+#will process 60,000 frames every hour on average
+#add an extra 2 hours to walltime
+MON_WALLTIME=02:00:00
+
+#walltime for MASTER.mdcrd
+#will process 180,000 frames an hour on average
+#add an extra 2 hours to walltime
+MAST_WALLTIME=02:00:00
+
+##################################
+
+#paths
+E_DIR=`pwd`
+D_DIR="$E_DIR/data"
+S_DIR="$E_DIR/scripts"
+T_DIR="$E_DIR/../mmgbsa_1C/traj"
+
+#user
+USER=`whoami`
+
+#version of amber for cpptraj, and MMPBSA
+AMBER_TRAJ_V=`grep -A1 "dynamics" $D_DIR/input_parameters | tail -1`
+
+#version of amber for parmed
+AMBER_PRMTOP_V=`grep -A1 "prmtop" $D_DIR/input_parameters | tail -1`
+
+#resid ranges and values for monomers, ligands, and calciums
+TETRAMER_PDB=`grep -A1 "ligands" $D_DIR/input_parameters | tail -1`
+DONE_PDB="$E_DIR/1A/1/analysis/done.pdb"
+LAST_RESID_1=`awk '/OXT/ {print substr($6,1,3); exit }' $D_DIR/$TETRAMER_PDB`
+LAST_RESID_2=`awk '/OXT/ {print substr($6,1,3) }' $D_DIR/$TETRAMER_PDB | head -2 | tail -1`
+LAST_RESID_3=`awk '/OXT/ {print substr($5,2,5) }' $D_DIR/$TETRAMER_PDB | head -3 | tail -1`
+LAST_RESID_4=`awk '/OXT/ {print substr($5,2,5) }' $D_DIR/$TETRAMER_PDB | tail -1`
+FIRST_RESID_1=`head -2 $D_DIR/$TETRAMER_PDB | tail -1 | awk '{print substr($6,1,1) }'`
+FIRST_RESID_2=$(($LAST_RESID_1 + 1))
+FIRST_RESID_3=$(($LAST_RESID_2 + 1))
+FIRST_RESID_4=$(($LAST_RESID_3 + 1))
+CA_1=`awk '/Ca+/ {print substr($5,2,5); exit }' $D_DIR/$TETRAMER_PDB`
+CA_2=`awk '/Ca+/ {print substr($5,2,5); }' $D_DIR/$TETRAMER_PDB | head -2 | tail -1`
+CA_3=`awk '/Ca+/ {print substr($5,2,5); }' $D_DIR/$TETRAMER_PDB | head -3 | tail -1`
+CA_4=`awk '/Ca+/ {print substr($5,2,5); }' $D_DIR/$TETRAMER_PDB | tail -1`
+LIG1=`awk '/MOL/ {print substr($0,23,4); exit}' $DONE_PDB`
+LIG2=$((LIG1+1))
+LIG3=$((LIG2+1))
+LIG4=$((LIG3+1))
+
+#segment of text to proceed the Cluster/run number for monomer trajin lines
+TXT1="trajin $E_DIR/"
+
+#first line is the rms for monomer.mdcrd
+#second line is rms for master.mdcrd
+RMS="rms first @CA"
+RMS2="rms first :36,37,69,70,97,143,146,165,195,211,213,262,286,320@CA"
+
+#name of files (within the "finished" directories) containing the "trajin" lines to be read
+M1="m1-strip.in"
+M2="m2-strip.in"
+M3="m3-strip.in"
+M4="m4-strip.in"
+#############END_VARIABLES######################
+
+#monomer, CA, and Ligand residues to be stripped---leave first entry in each array blank!!!!  
+arr1=("" "strip !:$FIRST_RESID_1-$LAST_RESID_1,$CA_1,$LIG1" "strip !:$FIRST_RESID_2-$LAST_RESID_2,$CA_2,$LIG2" "strip !:$FIRST_RESID_3-$LAST_RESID_3,$CA_3,$LIG3" "strip !:$FIRST_RESID_4-$LAST_RESID_4,$CA_4,$LIG4")
+
+#name of trajout file for hits corresponding to each monomer.mdcrd file---leave first entry blank!!!!
+arr2=("" "trajout $BASENAME-1.mdcrd nobox" "trajout $BASENAME-2.mdcrd nobox" "trajout $BASENAME-3.mdcrd nobox" "trajout $BASENAME-4.mdcrd nobox")
+
+#.mdcrd files read in by the maketotal script.
+arr3=("" "$BASENAME-1.mdcrd" "$BASENAME-2.mdcrd" "$BASENAME-3.mdcrd" "$BASENAME-4.mdcrd")
+
+#unload any previously loaded amber modules
+module unload amber
+#load amber module for cpptraj program
+module load amber/$AMBER_TRAJ_V
+
+#check for necessary files and directories
+if [ ! -e $D_DIR/$TETRAMER_PDB ]; then
+        echo "Error ----> The variable -TETRAMER_PDB- could not be found!!"
+        exit
+fi
+
+if [ ! -d 1A ]; then
+	echo "Error ----> Couldn't find the 1A directory!! Must run in directory containing all of your clusters!!"
+	exit
+fi
+
+if [ ! -e $DONE_PDB ]; then
+        echo "Error ----> The variable -DONE_PDB- could not be found!!"
+        exit
+fi
+
+if [ ! -d data ]; then
+        echo "Error ----> There is no data directory!!!"
+        exit
+fi
+
+if [ ! -d scripts ]; then
+        echo "Error ----> There is no scripts directory!!!"
+        exit
+fi
+
+#clusters to iniate MMGBSA for
+for clust in $CLUSTERS ; do
+
+	if [ ! -d $E_DIR/$clust/finished ]; then
+        	echo "Error ----> Couldn't find the finished directory containing information about hits!!"
+        	exit
+	fi
+	cd $E_DIR/$clust/finished
+	if [ -e $M1 ]; then
+		grep "trajin" $M1 | sed "s/^.*\($clust.*\)/\1/g" >>$E_DIR/m1.txt
+	fi
+	if [ -e $M2 ]; then
+		grep "trajin" $M2 | sed "s/^.*\($clust.*\)/\1/g" >>$E_DIR/m2.txt
+	fi
+	if [ -e $M3 ]; then 
+		grep "trajin" $M3 | sed "s/^.*\($clust.*\)/\1/g" >>$E_DIR/m3.txt
+	fi
+	if [ -e $M4 ]; then
+		grep "trajin" $M4 | sed "s/^.*\($clust.*\)/\1/g" >>$E_DIR/m4.txt
+	fi
+done
+
+NUM_FRAMES1=`grep -c "" $E_DIR/m1.txt`
+NUM_FRAMES2=`grep -c "" $E_DIR/m2.txt`
+NUM_FRAMES3=`grep -c "" $E_DIR/m3.txt`
+NUM_FRAMES4=`grep -c "" $E_DIR/m4.txt`
+NUM_FRAMES=$(((NUM_FRAMES1 + NUM_FRAMES2 + NUM_FRAMES3 + NUM_FRAMES4) * 1000))
+
+if [ $NUM_FRAMES -gt $EXPECTED ]; then
+		echo "Number of frames to be loaded by trajin script: $NUM_FRAMES"
+		echo "Number of frames that you ecpect to load:$EXPECTED"
+                echo "WARNING ----> more frames than expected. Check strip-in files"
+                exit
+fi
+
+if [ $NUM_FRAMES -lt $EXPECTED ]; then
+		echo "Number of frames to be loaded by the trajin script: $NUM_FRAMES"
+		echo "Number of frames that you expect to load: $EXPECTED"
+                echo "WARNING ----> fewer frames than expected. Check strip-in files"
+                exit
+fi
+
+
+#check for all 4 temporary m.txt files
+w=1
+while [ $w -le 4 ]; do
+	if [ ! -e $E_DIR/m"$w".txt ]; then
+        	echo "Error ----> all 4 m.txt files could not be found!!!!"
+        	exit
+	fi
+	let w=$w+1
+done
+
+#conversion of m.txt files into mon-traj files
+cd $E_DIR
+x=1
+while [ $x -le 4 ]; do
+	MONFILE="m$x"
+	VAR=`grep -c "" $MONFILE.txt`
+	y=1
+	while [ $y -le $VAR ]; do 
+		VAR2=`head -$y "$MONFILE.txt" | tail -1`
+		echo "$TXT1""$VAR2" >>mon"$x"-traj
+		let y=$y+1
+	done
+	echo ${arr1[$x]} >>mon"$x"-traj
+	echo $RMS >>mon"$x"-traj
+	echo ${arr2[$x]} >>mon"$x"-traj
+	let x=$x+1
+done
+rm m*.txt
+
+#submission of trajin.job codes to the cluster
+mkdir -p $T_DIR
+cd $T_DIR
+mkdir data
+mkdir scripts
+mv $E_DIR/mon*-traj data/
+cp $D_DIR/stripped.prmtop data/
+cp $S_DIR/mon_trajin.job scripts/
+cp $S_DIR/master_trajin.job scripts/
+cp $S_DIR/mmgbsa.job scripts/
+cp $S_DIR/mmgbsa.in scripts/
+
+m=1
+while [ $m -le 4 ]; do
+	cat scripts/mon_trajin.job | sed 's/XXX/'"$m"'/' >scripts/trajin"$m".job 
+	qsub -l walltime=$MON_WALLTIME,nodes=1:ppn=1 -M $USER@hamilton.edu -N monomer"$m".trajin scripts/trajin"$m".job -v AMBER_TRAJ_V=$AMBER_TRAJ_V >$T_DIR/data/MON"$m".ID
+	cat $T_DIR/data/MON"$m".ID
+	n="`wc -w <$T_DIR/data/MON"$m".ID`"
+	if [ $n -gt 1 ]; then
+		echo "Error with qsub ----> check trajin.job.o files"
+		exit
+	fi		
+	let m=$m+1
+done
+ 
+#unload any previously loaded amber modules
+module unload amber
+#load amber module for cpptraj program
+module load amber/$AMBER_PRMTOP_V
+
+#create complex, receptor, and ligand prmtops 
+cd $T_DIR/data
+
+if [ ! -e stripped.prmtop ]; then
+        echo "Failure ----> stripped.prmtop could not be found in data directory" 
+        exit
+fi
+
+if [ ! -e complex_GB.prmtop ]; then
+        echo "Complex_GB.prmtop does not exist ---> Creating complex prmtop file."
+        echo "strip !:$FIRST_RESID_1-$LAST_RESID_1,$CA_1,$LIG1" >make_complex_parm.prmed
+        echo "changeRadii mbondi2" >>make_complex_parm.prmed
+        echo "outparm complex_GB.prmtop" >>make_complex_parm.prmed
+        parmed.py stripped.prmtop make_complex_parm.prmed
+fi
+
+if [ ! -e ligand_GB.prmtop ]; then
+        echo "Ligand_GB.prmtop does not exist ---> Creating ligand prmtop file."
+        echo "strip !:$LIG1" >make_ligand_parm.prmed
+        echo "changeRadii mbondi2" >>make_ligand_parm.prmed
+        echo "outparm ligand_GB.prmtop" >>make_ligand_parm.prmed
+        parmed.py stripped.prmtop make_ligand_parm.prmed
+fi
+
+if [ ! -e receptor_GB.prmtop ]; then
+        echo "Receptor_GB.prmtop does not exist ---> Creating receptor prmtop file."
+        echo "strip !:$FIRST_RESID_1-$LAST_RESID_1,$CA_1" >make_receptor_parm.prmed
+        echo "changeRadii mbondi2" >>make_receptor_parm.prmed
+        echo "outparm receptor_GB.prmtop" >>make_receptor_parm.prmed
+        parmed.py stripped.prmtop make_receptor_parm.prmed
+fi
+mv make_*.prmed $T_DIR/scripts/
+
+#unload any previously loaded amber modules
+module unload amber
+#load amber module for mmgbsa
+module load amber/$AMBER_TRAJ_V
+
+#submission of master_trajin.job
+cd $T_DIR
+D=1
+while [ $D -le 4 ]; do
+	if [ ! -e $T_DIR/data/MON"$D".ID ]; then
+        	echo "Failure ----> appropriate MON.ID files could not be found in data directory" 
+        	exit
+	fi	
+	let D=$D+1
+done
+
+JOBID_1=`head -1 $T_DIR/data/MON1.ID | sed 's/\.grid.*//'`
+JOBID_2=`head -1 $T_DIR/data/MON2.ID | sed 's/\.grid.*//'`
+JOBID_3=`head -1 $T_DIR/data/MON3.ID | sed 's/\.grid.*//'`
+JOBID_4=`head -1 $T_DIR/data/MON4.ID | sed 's/\.grid.*//'`
+
+
+echo "trajin $T_DIR/$BASENAME-1.mdcrd 1 1000000 1" >data/maketotal-traj
+echo "trajin $T_DIR/$BASENAME-2.mdcrd 1 1000000 1" >>data/maketotal-traj
+echo "trajin $T_DIR/$BASENAME-3.mdcrd 1 1000000 1" >>data/maketotal-traj
+echo "trajin $T_DIR/$BASENAME-4.mdcrd 1 1000000 1" >>data/maketotal-traj
+echo "$RMS2" >>data/maketotal-traj
+echo "trajout $MASTER nobox" >>data/maketotal-traj
+
+if [ ! -e $T_DIR/data/maketotal-traj ]; then
+                echo "Failure ----> maketotal-traj could not be found in data directory" 
+                exit
+fi
+if [ ! -e $T_DIR/scripts/master_trajin.job ]; then
+                echo "Failure ----> master_trajin.job could not be found in data directory" 
+                exit
+fi              
+
+#-W depend=afterok:$JOBID_1:$JOBID_2:$JOBID_3:$JOBID_4
+qsub -l walltime=$MAST_WALLTIME,nodes=1:ppn=1  -M $USER@hamilton.edu -N mastr_traj.job scripts/master_trajin.job -v AMBER_TRAJ_V=$AMBER_TRAJ_V >$T_DIR/data/MASTER.ID
+cat $T_DIR/data/MASTER.ID
+
+o="`wc -w <$T_DIR/data/MASTER.ID`"
+
+if [ $o -gt 1 ]; then
+                echo "Error with qsub for master.mdcrd ----> check master_job.o file"
+                exit
+fi
+
+#submission of mmgbsa.job
+mkdir -p $T_DIR/../mapping/mmpbsa_output
+cd $T_DIR/../mapping/mmpbsa_output
+
+if [ ! -e $T_DIR/scripts/mmgbsa.job ]; then
+        echo "Failure ----> mmgbsa.job could not be found in scripts directory" 
+        exit
+fi
+if [ ! -e $T_DIR/scripts/mmgbsa.in ]; then
+        echo "Failure ----> mmgbsa.in could not be found in data directory" 
+        exit
+fi
+
+JOBID_5=`head -1 $T_DIR/data/MASTER.ID | sed 's/\.grid.*//'`
+
+qsub -l walltime=$WALLTIME,nodes=$NODES:ppn=$PPN -W depend=afterok:$JOBID_5 -M $USER@hamilton.edu -N mmgbsa.job $T_DIR/scripts/mmgbsa.job -v T_DIR=$T_DIR,AMBER_TRAJ_V=$AMBER_TRAJ_V >$T_DIR/data/MMGBSA.ID
+
+cat $T_DIR/data/MMGBSA.ID
+
+q="`wc -w <$T_DIR/data/MMGBSA.ID`"
+
+if [ $q -gt 1 ]; then
+                echo "Error with qsub for mmgbsa.job ----> check mmgbsa.job.o file"
+                exit
+fi
+
+
+#submission of centmass.job
+mkdir -p $T_DIR/../mapping/centmass_temps
+cd $T_DIR/../mapping/centmass_temps
+cp $S_DIR/centmass.tcl ./
+cp $S_DIR/centmass.job ./
+sed -i "s|XXX|"$T_DIR"|" centmass.tcl
+sed -i 's/YYY/'"$NUM_REP"'/' centmass.tcl
+sed -i 's/YYY/'"$NUM_REP"'/' centmass.job
+
+qsub -l nodes=1:ppn=1 -W depend=afterok:$JOBID_5 -M $USER@hamilton.edu centmass.job -v T_DIR=$T_DIR,BASENAME=$BASENAME >$T_DIR/data/CENTMASS.ID
+cat $T_DIR/data/CENTMASS.ID
+
+q="`wc -w <$T_DIR/data/CENTMASS.ID`"
+
+if [ $q -gt 1 ]; then
+                echo "Error with qsub for centmass.job ----> check centmass.job.o file"
+                exit
+fi
+
+
+#submission of mapfull.job
+cd $T_DIR/../mapping/mmpbsa_output
+cp $S_DIR/mapfull.job ./
+cp $S_DIR/avw_map_script.cc ./
+cp $S_DIR/avw_map_script ./
+sed -i 's/XXX/'"$CORES"'/' mapfull.job
+sed -i 's/YYY/'"$NUM_FRAMES"'/' mapfull.job
+
+JOBID_6=`head -1 $T_DIR/data/CENTMASS.ID | sed 's/\.grid.*//'`
+JOBID_7=`head -1 $T_DIR/data/MMGBSA.ID | sed 's/\.grid.*//'`
+
+qsub -W depend=afterok:$JOBID_6:$JOBID_7 -M $USER@hamilton.edu mapfull.job 
+
+
+
+
+
+
+
+
+
+
