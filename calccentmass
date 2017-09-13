@@ -1,0 +1,14 @@
+set sel0 [atomselect top all] 
+set filename "allcentmass.txt"
+set fileId [open $filename "w"]
+set num_steps [molinfo 0 get numframes]
+set x 0
+while {$x < $num_steps} {
+animate goto $x
+display update ui
+set com1 [measure center $sel0 weight mass]
+puts $com1
+puts $fileId "$com1"
+set x [expr {$x +1}]
+}
+close $fileId                       
