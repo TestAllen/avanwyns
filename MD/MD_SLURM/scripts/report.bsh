@@ -1,0 +1,33 @@
+#!/bin/bash
+
+E_DIR=$3
+S_DIR="$E_DIR/scripts"
+D_DIR="$E_DIR/data"
+#file clusters were aligned over
+ALIGN_PDB=`grep -A1 "clusters" $D_DIR/input_parameters | tail -1`
+RES=$1
+MONOMER=$2
+FIRST=$4
+LAST=$5
+CAL=$6
+
+RUN_NUM=`head -1 ../../run_number`
+ANAL_PATH=`pwd`
+
+vmd -dispdev text -e $S_DIR/monomer.tcl -args $RES $MONOMER $FIRST $LAST $ALIGN_PDB
+mv stuck_$MONOMER.pdb ../../finished/stuck_monomer_$MONOMER-$RUN_NUM.pdb
+
+
+if [ ! -e ../../finished/m$MONOMER-strip.in ]; then
+	sed 's/WWW/'$FIRST'/' < $S_DIR/m-strip.in > ../../finished/m$MONOMER-strip.in
+	sed -i 's/XXX/'$LAST'/' ../../finished/m$MONOMER-strip.in
+	sed -i 's/YYY/'$CAL'/' ../../finished/m$MONOMER-strip.in
+	sed -i 's/ZZZ/'$RES'/' ../../finished/m$MONOMER-strip.in
+	sed -i 's/AAA/'$MONOMER'/' ../../finished/m$MONOMER-strip.in
+fi
+
+
+sed -i '1s|^|trajin '$ANAL_PATH'/stripped.mdcrd 1 1000 1\n|' ../../finished/m$MONOMER-strip.in
+
+
+
