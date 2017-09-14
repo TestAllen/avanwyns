@@ -1,0 +1,84 @@
+#!/bin/bash
+#PBS -m abe
+#PBS -j oe
+#PBS -r n
+
+source /usr/local/global/etc/global.login.sh
+date
+cd $PBS_O_WORKDIR
+
+##########VARIABLES###########
+D_DIR="$E_DIR/data"
+S_DIR="$E_DIR/scripts"
+USER=`whoami`
+LABEL=`pwd | sed 's|'$E_DIR'/||' | sed 's|/production||' | sed 's|/|_|'`
+ANAL_JOB="analysis_$LABEL"
+
+RUN="prod"
+OLD="../equilibration/mdwat/mdwat.rst"
+PRMTOP="$D_DIR/ligand_at_sites.prmtop"
+REF="../equilibration/mdwat/mdwat.rst"
+
+AMBER_DYN_V=`grep -A1 "dynamics" $D_DIR/input_parameters | tail -1`
+#################END VARIABLES################
+
+cat $PBS_NODEFILE
+
+module unload amber
+module unload mpi
+module unload cuda
+module load amber/$AMBER_DYN_V
+if [ "$QUEUE" == "una" ]; then
+	MPI="mpiexec"
+	INTERFACE="-iface ib0"
+	EXE="pmemd.MPI"
+	NSLOTS=`grep -c "" $PBS_NODEFILE`
+	module load mpi/mvapich2-x86_64
+	module list
+	
+	$MPI -np $NSLOTS $INTERFACE $EXE -O -i $RUN.in -o $RUN.out -p $PRMTOP -c $OLD -r $RUN.rst -x $RUN.mdcrd -ref $REF
+
+	rm mdinfo prod.in logfile
+
+elif [ "$QUEUE" == "gpu" ]; then
+	EXE="pmemd.cuda"
+	source /usr/local/global/bin/gpu-card-used
+	module load cuda/8.0
+	module list
+
+	$EXE -O -i $RUN.in -o $RUN.out -p $PRMTOP -c $OLD -r $RUN.rst -x $RUN.mdcrd -ref $REF
+	
+	rm mdinfo prod.in gpu-card-used
+else
+	echo "Error ----> Executable not properly set!!!"
+        ssh grid 'echo "Error ----> Executalbe not properly set!" | mail -s "prod '$LABEL' failed" '$USER'@hamilton.edu'
+        exit
+fi
+
+if ! tail -1 prod.out | grep -q "Total wall time"; then
+        echo "Error ----> production did not complete properly!!!"
+        ssh grid 'echo "Error ----> production did not complete properly!" | mail -s "prod '$LABEL' failed" '$USER'@hamilton.edu'
+        exit
+fi
+
+if [ ! -e $RUN.mdcrd ]; then
+	echo "Error ----> $RUN.mdcrd was not found!!!"
+        ssh grid 'echo "Error ----> '$RUN'.mdcrd was not found!" | mail -s "prod '$LABEL' failed" '$USER'@hamilton.edu'
+        exit
+fi
+if [ ! -e $RUN.rst ]; then
+	echo "Error ----> $RUN.rst was not found!!!"
+	ssh grid 'echo "Error ----> '$RUN'.rst was not found!" | mail -s "prod '$LABEL' failed" '$USER'@hamilton.edu'
+	exit
+fi
+
+mkdir ../analysis
+cd ../analysis
+cp $S_DIR/analysis.job ./
+ANAL_DIR=`pwd`
+ssh grid "cd $ANAL_DIR && qsub -M $USER@hamilton.edu -N $ANAL_JOB analysis.job -v E_DIR=$E_DIR,QUEUE=$QUEUE"
+
+date
+
+
+

@@ -1,0 +1,25 @@
+#!/bin/bash
+
+FILE="nums$1.txt"
+
+first=1
+second=100
+while [ $second -lt 1001 ]
+do
+	sum=`sed -n ''$first','$second'p' $FILE | awk '{tot=tot+$1} END {print tot}'`
+   	let average="$sum/100"
+#   	echo $average
+      	if [ $average -gt 19 ]; then
+ 		if  grep -q "$1 diffused" SWITCH; then
+			sed -i ''$2','$2' s/.*/2 '$1' stuck-and-diffused/' SWITCH
+			echo "$1 stuck-and-diffused"
+		else
+			sed -i ''$2','$2' s/.*/1 '$1' stuck /' SWITCH
+			echo "$1 stuck "
+		fi
+		exit
+	fi
+	let first="$first+1"
+	let second="$second+1"
+done
+

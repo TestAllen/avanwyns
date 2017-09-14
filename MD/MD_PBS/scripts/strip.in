@@ -1,0 +1,3 @@
+trajin "../production/prod.mdcrd"
+strip :WAT
+trajout stripped.mdcrd

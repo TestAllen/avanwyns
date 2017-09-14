@@ -1,0 +1,118 @@
+#!/bin/bash
+#PBS -l walltime=00:15:00
+#PBS -l nodes=1:ppn=1
+#PBS -q una
+#PBS -m be
+#PBS -j oe
+#PBS -r n
+
+source /usr/local/global/etc/global.login.sh
+date
+cd $PBS_O_WORKDIR
+
+##################VARIABLES######################
+#paths
+S_DIR="$E_DIR/scripts"
+D_DIR="$E_DIR/data"
+AMBER_DYN_V=`grep -A1 "dynamics" $D_DIR/input_parameters | tail -1`
+
+#set residues to check 
+RES1=`awk '/WAT/ {print substr($0,24,4); exit}' ../setup/ready_for_tleap.pdb`
+RES2=$((RES1+1))
+RES3=$((RES2+1))
+RES4=$((RES3+1))
+
+
+#set monomer ranges
+TETRAMER_PDB=`grep -A1 "ligands" $D_DIR/input_parameters | tail -1`
+LAST_1=`awk '/OXT/ {print substr($0,23,4); exit }' $D_DIR/$TETRAMER_PDB`
+LAST_2=`awk '/OXT/ {print substr($0,23,4) }' $D_DIR/$TETRAMER_PDB | head -2 | tail -1`
+LAST_3=`awk '/OXT/ {print substr($0,23,4) }' $D_DIR/$TETRAMER_PDB | head -3 | tail -1`
+LAST_4=`awk '/OXT/ {print substr($0,23,4) }' $D_DIR/$TETRAMER_PDB | tail -1`
+
+FIRST_1=`awk '/ATOM/ {print substr($0,23,4); exit }' $D_DIR/$TETRAMER_PDB`
+FIRST_2=$((LAST_1+1))
+FIRST_3=$((LAST_2+1))
+FIRST_4=$((LAST_3+1))
+
+#set calcium residue numbers
+CAL_1=`awk '/CAL/ {print substr($0,23,4); exit }' $D_DIR/$TETRAMER_PDB`
+CAL_2=`awk '/CAL/ {print substr($0,23,4) }' $D_DIR/$TETRAMER_PDB | head -2 | tail -1`
+CAL_3=`awk '/CAL/ {print substr($0,23,4) }' $D_DIR/$TETRAMER_PDB | head -3 | tail -1`
+CAL_4=`awk '/CAL/ {print substr($0,23,4) }' $D_DIR/$TETRAMER_PDB | tail -1`
+
+##############END_VARIABLES######################
+
+#loading amber for analysis.job
+module unload amber
+module load amber/$AMBER_DYN_V
+
+#strip water in mdcrd
+cpptraj $D_DIR/ligand_at_sites.prmtop < $S_DIR/strip.in
+
+#create contact lists 
+vmd -dispdev text -e $S_DIR/num_list.tcl -args $RES1
+vmd -dispdev text -e $S_DIR/num_list.tcl -args $RES2
+vmd -dispdev text -e $S_DIR/num_list.tcl -args $RES3
+vmd -dispdev text -e $S_DIR/num_list.tcl -args $RES4
+
+cp $S_DIR/SWITCH .
+
+#check diffuse 
+$S_DIR/diffuse_switch.bsh $RES1 1
+$S_DIR/diffuse_switch.bsh $RES2 2
+$S_DIR/diffuse_switch.bsh $RES3 3
+$S_DIR/diffuse_switch.bsh $RES4 4
+
+#check stuck
+$S_DIR/stuck_switch.bsh $RES1 1
+$S_DIR/stuck_switch.bsh $RES2 2
+$S_DIR/stuck_switch.bsh $RES3 3
+$S_DIR/stuck_switch.bsh $RES4 4
+
+#report stuck ligands
+mkdir -p ../../finished
+ambpdb -p $D_DIR/ligand_at_sites.prmtop < ../production/prod.rst > done.pdb
+
+if grep -q "$RES1 stuck " SWITCH; then
+	$S_DIR/report.bsh $RES1 1 $E_DIR $FIRST_1 $LAST_1 $CAL_1
+fi
+
+if grep -q "$RES2 stuck " SWITCH; then
+        $S_DIR/report.bsh $RES2 2 $E_DIR $FIRST_2 $LAST_2 $CAL_2
+fi
+
+if grep -q "$RES3 stuck " SWITCH; then
+        $S_DIR/report.bsh $RES3 3 $E_DIR $FIRST_3 $LAST_3 $CAL_3
+fi
+
+if grep -q "$RES4 stuck " SWITCH; then
+        $S_DIR/report.bsh $RES4 4 $E_DIR $FIRST_4 $LAST_4 $CAL_4
+fi
+
+
+#cleanup
+cd ../
+tar -czvf setup.tar.z setup/
+rm -rf setup/
+tar -czvf equilibration.tar.z equilibration/
+rm -rf equilibration/
+tar -czvf production.tar.z production/
+rm -rf production/
+
+
+#start next run
+sed -i '1d' ../run_number
+VAL=`head -1 ../run_number`
+DIR="../$VAL"
+
+if [ -d $DIR ]; then
+	echo "Error ----> Directory $DIR already exists!!!"
+	ssh grid 'echo "Directory '$DIR' already exists!" | mail -s "'$LABEL' restart '$VAL'  failed" '$USER'@hamilton.edu'
+	exit
+fi
+
+#mkdir -p $DIR/setup
+#cd $DIR/setup
+#$S_DIR/RUN.bsh $E_DIR $QUEUE
+date

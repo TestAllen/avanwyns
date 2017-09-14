@@ -1,0 +1,67 @@
+#!/bin/bash
+#PBS -q una
+#PBS -m be
+#PBS -j oe
+#PBS -r n
+
+source /usr/local/global/etc/global.login.sh
+date
+cd $PBS_O_WORKDIR
+
+#######VARIABLES########
+S_DIR="$E_DIR/scripts"
+D_DIR="$E_DIR/data"
+USER=`whoami`
+LABEL=`pwd | sed 's|'$E_DIR'/||' | sed 's|/equilibration/minwat||' | sed 's|/|_|'`
+
+MD_JOB="mdwat_$LABEL"
+MD_NODE=`grep -A3 "processors" $D_DIR/input_parameters | tail -1 | awk '{print $1}'`
+MD_PPN=`grep -A3 "processors" $D_DIR/input_parameters | tail -1 | awk '{print $2}'`
+MD_WALLTIME=`grep -A2 "walltime" $D_DIR/input_parameters | tail -1`
+
+RUN="minwat"
+OLD="../../setup/ligand_at_sites.inpcrd"
+PRMTOP="$D_DIR/ligand_at_sites.prmtop"
+REF="../../setup/ligand_at_sites.inpcrd"
+
+AMBER_DYN_V=`grep -A1 "dynamics" $D_DIR/input_parameters | tail -1`
+MPI="mpiexec"
+EXE="pmemd.MPI"
+INTERFACE="-iface ib0"
+#########END VARIABLES#######
+
+cat $PBS_NODEFILE
+NSLOTS=`grep -c "" $PBS_NODEFILE`
+
+module unload amber
+module unload mpi
+module load amber/$AMBER_DYN_V
+module load mpi/mvapich2-x86_64
+module list
+
+$MPI -np $NSLOTS $INTERFACE $EXE -O -i $RUN.in -o $RUN.out -p $PRMTOP -c $OLD -r $RUN.rst -x $RUN.mdcrd -ref $REF
+
+rm mdinfo logfile minwat.in
+
+if [ ! -e $RUN.rst ]; then
+	echo "Error ----> $RUN.rst was not found!!!"
+	ssh grid 'echo "Error ----> '$RUN'.rst was not found!" | mail -s "minwat '$LABEL' failed" '$USER'@hamilton.edu'
+        exit
+fi
+
+if ! tail -1 minwat.out | grep -q "Total wall time"; then
+	echo "Error ----> minwat did not complete properly!!!"
+	ssh grid 'echo "Error ----> minwat did not complete properly!" | mail -s "minwat '$LABEL' failed" '$USER'@hamilton.edu'
+	exit
+fi
+
+mkdir ../mdwat
+cd ../mdwat
+MDWAT_DIR=`pwd`
+
+cp $S_DIR/mdwat.in .
+cp $S_DIR/mdwat.job .
+
+ssh grid "cd $MDWAT_DIR && qsub -M $USER@hamilton.edu -l walltime=$MD_WALLTIME,nodes=$MD_NODE:ppn=$MD_PPN -N $MD_JOB mdwat.job -v E_DIR=$E_DIR,QUEUE=$QUEUE"
+date
+

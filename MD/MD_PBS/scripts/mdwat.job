@@ -1,0 +1,85 @@
+#!/bin/bash
+#PBS -q una
+#PBS -m be
+#PBS -j oe
+#PBS -r n
+
+source /usr/local/global/etc/global.login.sh
+date
+cd $PBS_O_WORKDIR
+
+#######VARIABLES########
+S_DIR="$E_DIR/scripts"
+D_DIR="$E_DIR/data"
+USER=`whoami`
+LABEL=`pwd | sed 's|'$E_DIR'/||' | sed 's|/equilibration/mdwat||' | sed 's|/|_|'`
+
+PROD_NODE=`grep -A4 "processors" $D_DIR/input_parameters | tail -1 | awk '{print $1}'`
+PROD_PPN=`grep -A4 "processors" $D_DIR/input_parameters | tail -1 | awk '{print $2}'`
+GPU_WALLTIME=`grep -A3 "walltime" $D_DIR/input_parameters | tail -1`
+UNA_WALLTIME=`grep -A4 "walltime" $D_DIR/input_parameters | tail -1`
+PROD_JOB="prod_$LABEL"
+
+RES_1=`grep -A1 "residues to hold during production" $D_DIR/input_parameters | tail -1 | awk '{print $1}'`
+RES_2=`grep -A1 "residues to hold during production" $D_DIR/input_parameters | tail -1 | awk '{print $2}'`
+RES_3=`grep -A1 "residues to hold during production" $D_DIR/input_parameters | tail -1 | awk '{print $3}'`
+RES_4=`grep -A1 "residues to hold during production" $D_DIR/input_parameters | tail -1 | awk '{print $4}'`
+
+RUN="mdwat"
+OLD="../minwat/minwat.rst"
+PRMTOP="$D_DIR/ligand_at_sites.prmtop"
+REF="../../setup/ligand_at_sites.inpcrd"
+
+AMBER_DYN_V=`grep -A1 "dynamics" $D_DIR/input_parameters | tail -1`
+MPI="mpiexec"
+EXE="pmemd.MPI"
+INTERFACE="-iface ib0"
+#########END VARIABLES##########
+
+cat $PBS_NODEFILE
+NSLOTS=`grep -c "" $PBS_NODEFILE`
+
+module unload amber
+module unload mpi
+module load amber/$AMBER_DYN_V
+module load mpi/mvapich2-x86_64
+module list
+
+$MPI -np $NSLOTS $INTERFACE $EXE -O -i $RUN.in -o $RUN.out -p $PRMTOP -c $OLD -r $RUN.rst -x $RUN.mdcrd -ref $REF
+
+rm mdinfo logfile mdwat.in
+
+if [ ! -e $RUN.rst ]; then
+                echo "Error ----> $RUN.rst was not found!!!"
+                ssh grid 'echo "Error ----> '$RUN'.rst was not found!" | mail -s "mdwat '$LABEL' failed" '$USER'@hamilton.edu'
+		exit
+fi
+
+if ! tail -1 mdwat.out | grep -q "Total wall time"; then
+        echo "Error ----> mdwat did not complete properly!!!"
+        ssh grid 'echo "Error ----> mdwat did not complete properly!" | mail -s "mdwat '$LABEL' failed" '$USER'@hamilton.edu'
+        exit
+fi
+
+mkdir ../../production
+cd ../../production
+PROD_DIR=`pwd`
+
+sed 's/WWW/'$RES_1'/' < $S_DIR/prod.in > prod.in
+sed -i 's/XXX/'$RES_2'/' prod.in
+sed -i 's/YYY/'$RES_3'/' prod.in
+sed -i 's/ZZZ/'$RES_4'/' prod.in
+
+cp $S_DIR/prod.job .
+
+if [ "$QUEUE" == "una" ]; then
+	ssh grid "cd $PROD_DIR && qsub -l walltime=$UNA_WALLTIME,nodes=$PROD_NODE:ppn=$PROD_PPN -M $USER@hamilton.edu -N $PROD_JOB -q $QUEUE prod.job -v E_DIR=$E_DIR,QUEUE=$QUEUE"
+elif [ "$QUEUE" == "gpu" ]; then
+        ssh grid "cd $PROD_DIR && qsub -l walltime=$GPU_WALLTIME -M $USER@hamilton.edu -N $PROD_JOB -q $QUEUE prod.job -v E_DIR=$E_DIR,QUEUE=$QUEUE"
+else
+        echo "Error ---> No acceptable queue chosen!!!"
+	ssh grid 'echo "Error ---> No acceptable queue chosen!" | mail -s "mdwat '$LABEL' failed" '$USER'@hamilton.edu'
+	exit
+fi
+
+date
