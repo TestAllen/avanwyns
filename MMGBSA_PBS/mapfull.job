@@ -1,0 +1,181 @@
+#!/bin/bash
+
+#PBS -l walltime=00:10:00
+#PBS -l nodes=1:ppn=1
+#PBS -q una
+#PBS -m be
+#PBS -j oe
+#PBS -r n
+
+source /usr/local/global/etc/global.login.sh
+date
+cd $PBS_O_WORKDIR
+
+#This script takes the output of MM/GBSA calulcations and maps each frame onto the surface of the protein
+
+#Step 1:
+#Combine all of the GB parallel ouput to single files for complex, ligand, and receptor (64 cores)
+
+#Complex,Receptor,Ligand
+x=0
+while [ "$x" -lt XXX ]
+do
+        cat _MMPBSA_complex_gb.mdout."$x" >> MMGB_complex
+        cat _MMPBSA_receptor_gb.mdout."$x" >> MMGB_receptor
+        cat _MMPBSA_ligand_gb.mdout."$x" >> MMGB_ligand
+        x=`expr $x + 1`
+done
+
+#Step 2:
+#Set variables, make the output file folder, move in the cat'd files
+#echo "Type the name of your complex parameter and topology file (prmtop), followed by [ENTER]:"
+#read PRMTOP
+#echo "Type the name of your molecular dynamics file, followed by [ENTER]:"
+#read MDCRD
+#mkdir map_output
+mv MMGB_complex map_output/MMGB_complex
+mv MMGB_receptor map_output/MMGB_receptor
+mv MMGB_ligand map_output/MMGB_ligand
+#cp /usr/local/avw/lkrause/MMGBSA/center_of_mass.tcl center_of_mass.tcl
+cd map_output/
+
+#Step 3:
+#Extract the line containing the van der waals (VDWAALS), electrostatics (EEL), and polar solvation contributions (EGB) to the energy of the complex/ligand/receptor
+
+sed -n '/VDWAALS/p' MMGB_complex > temp_output_complex_1
+sed -n '/ESURF/p' MMGB_complex > temp_output_complex_2
+sed -n '/VDWAALS/p' MMGB_receptor > temp_output_receptor_1
+sed -n '/ESURF/p' MMGB_receptor > temp_output_receptor_2
+sed -n '/VDWAALS/p' MMGB_ligand > temp_output_ligand_1
+sed -n '/ESURF/p' MMGB_ligand > temp_output_ligand_2
+
+#Step 4:
+#Separate the VDW, EEL and EGB into three separate files for each component
+
+#Complex contributions
+awk '/VDWAALS/ {print $3}' temp_output_complex_1 > vdw_complex
+awk '/VDWAALS/ {print $6}' temp_output_complex_1 > eel_complex
+awk '/VDWAALS/ {print $9}' temp_output_complex_1 > egb_complex
+awk '/ESURF/ {print $3}' temp_output_complex_2 > esurf_complex
+
+#Receptor contributions
+awk '/VDWAALS/ {print $3}' temp_output_receptor_1 > vdw_receptor
+awk '/VDWAALS/ {print $6}' temp_output_receptor_1 > eel_receptor
+awk '/VDWAALS/ {print $9}' temp_output_receptor_1 > egb_receptor
+awk '/ESURF/ {print $3}' temp_output_receptor_2 > esurf_receptor
+
+#Ligand contributions
+awk '/VDWAALS/ {print $3}' temp_output_ligand_1 > vdw_ligand
+awk '/VDWAALS/ {print $6}' temp_output_ligand_1 > eel_ligand
+awk '/VDWAALS/ {print $9}' temp_output_ligand_1 > egb_ligand
+awk '/ESURF/ {print $3}' temp_output_ligand_2 > esurf_ligand
+
+#Step 5:
+#Use AVW's fancy C++ script to calculate vdw, eel, egb, esurf, sums, and delta g.
+
+../avw_map_script YYY
+
+#Step 6:
+#Format the calculated values to fit in the beta value column
+awk '{printf "%6.2f\n",$1}' delta_vdw > formatted_vdw
+awk '{printf "%6.2f\n",$1}' delta_eel > formatted_eel
+awk '{printf "%6.2f\n",$1}' delta_egb > formatted_egb
+awk '{printf "%6.2f\n",$1}' delta_esurf > formatted_esurf
+awk '{printf "%6.2f\n",$1}' sum_eel_egb > formatted_sum_eel_egb
+awk '{printf "%6.2f\n",$1}' sum_vdw_esurf > formatted_sum_vdw_esurf
+awk '{printf "%6.2f\n",$1}' delta_G > formatted_delta_G
+
+#Step 7:
+#This calculates the center of mass of the ligand across the trajectory
+#cd ../
+#sed -i "s|AAAA|$PRMTOP|" center_of_mass.tcl
+#sed -i "s|BBBB|$MDCRD|" center_of_mass.tcl
+#vmd -dispdev text < center_of_mass.tcl
+#cd map_output
+
+#Step 8:
+#Create a PDB file of the centers of mass, excluding beta value column, TER's and headers
+awk '{printf "ATOM %6s  N   VAL X   1     %7.3f %7.3f %7.3f\n",NR, $1,$2,$3}' <../centmass_tot > temp_centmass2
+sed -e 's/$/  0.00 /' temp_centmass2 > temp_centmass3
+
+#Step 9:
+#Add beta values to create three different map files
+
+#VDW
+paste -d " " temp_centmass3 formatted_vdw > temp_vdw_map1
+sed -e 's/  0.00 /  0.00/g' temp_vdw_map1 > temp_vdw_map2
+
+#EEL
+paste -d " " temp_centmass3 formatted_eel > temp_eel_map1
+sed -e 's/  0.00 /  0.00/g' temp_eel_map1 > temp_eel_map2
+
+#EGB
+paste -d " " temp_centmass3 formatted_egb > temp_egb_map1
+sed -e 's/  0.00 /  0.00/g' temp_egb_map1 > temp_egb_map2
+
+#ESURF
+paste -d " " temp_centmass3 formatted_esurf > temp_esurf_map1
+sed -e 's/  0.00 /  0.00/g' temp_esurf_map1 > temp_esurf_map2
+
+#EEL+EGB
+paste -d " " temp_centmass3 formatted_sum_eel_egb > temp_sum_eel_egb_map1
+sed -e 's/  0.00 /  0.00/g' temp_sum_eel_egb_map1 > temp_sum_eel_egb_map2
+
+#VDW+ESURF
+paste -d " " temp_centmass3 formatted_sum_vdw_esurf > temp_sum_vdw_esurf_map1
+sed -e 's/  0.00 /  0.00/g' temp_sum_vdw_esurf_map1 > temp_sum_vdw_esurf_map2
+
+#dG Total
+paste -d " " temp_centmass3 formatted_delta_G > temp_delta_G_map1
+sed -e 's/  0.00 /  0.00/g' temp_delta_G_map1 > temp_delta_G_map2
+
+#Step 10:
+#Finalize formatting. Add END's between lines and add CRYST1 header
+
+#VDW
+#sed -i '1d' temp_vdw_map2
+#sed -i '$d' temp_vdw_map2
+sed -e '1i\
+CRYST1    0.000    0.000    0.000  90.00  90.00  90.00 P 1           1' temp_vdw_map2 > FINAL_vdw_map.pdb
+
+#EEL
+#sed -i '1d' temp_eel_map2
+#sed -i '$d' temp_eel_map2
+sed -e '1i\
+CRYST1    0.000    0.000    0.000  90.00  90.00  90.00 P 1           1' temp_eel_map2 > FINAL_eel_map.pdb
+
+#EGB
+#sed -i '1d' temp_egb_map2
+#sed -i '$d' temp_egb_map2
+sed -e '1i\
+CRYST1    0.000    0.000    0.000  90.00  90.00  90.00 P 1           1' temp_egb_map2 > FINAL_egb_map.pdb
+
+#ESURF
+#sed -i '1d' temp_esurf_map2
+#sed -i '$d' temp_esurf_map2
+sed -e '1i\
+CRYST1    0.000    0.000    0.000  90.00  90.00  90.00 P 1           1' temp_esurf_map2 > FINAL_esurf_map.pdb
+
+#EEL+EGB
+#sed -i '1d' temp_sum_eel_egb_map2
+#sed -i '$d' temp_sum_eel_egb_map2
+sed -e '1i\
+CRYST1    0.000    0.000    0.000  90.00  90.00  90.00 P 1           1' temp_sum_eel_egb_map2 > FINAL_sum_eel_egb_map.pdb
+
+#VDW+ESURF
+#sed -i '1d' temp_sum_vdw_esurf_map2
+#sed -i '$d' temp_sum_vdw_esurf_map2
+sed -e '1i\
+CRYST1    0.000    0.000    0.000  90.00  90.00  90.00 P 1           1' temp_sum_vdw_esurf_map2 > FINAL_sum_vdw_esurf_map.pdb
+
+#dG Total
+#sed -i '1d' temp_delta_G_map2
+#sed -i '$d' temp_delta_G_map2
+sed -e '1i\
+CRYST1    0.000    0.000    0.000  90.00  90.00  90.00 P 1           1' temp_delta_G_map2 > FINAL_delta_G_map.pdb
+
+#Step 11: Final step! Remove temporary files and echo the job is done.
+#rm temp*
+echo "Mapping complete... Enjoy!"
+
+date
