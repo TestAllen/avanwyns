@@ -1,0 +1,44 @@
+INPUT DATA
+
+#!!!!!!Do not change header names---they are used to search for the proper
+#parameters in the rest of the scripts
+
+-----QUEUE INFORMATION____
+#production queue (either una or gpu)
+gpu
+
+#walltime (HH:MM:SS)----first line is for minwat, second for mdwat, 3rd for production
+00:15:00
+02:00:00
+72:00:00
+
+#nodes and processors per node (ppn)----1st line for minwat; 2nd line for mdwat; 3rd line for production if queue=una)
+#nodes  ppn 
+2       16
+2       16
+16      4
+
+#AMBER version for prmtop generation
+14
+
+#AMBER version for dynamics
+16
+
+----SYSTEM INFORMATION-----
+#full system PDB file to align ligands over---must be in data/ directory
+align_to_this.pdb
+
+#PDB file of protein that clusters were generated over--must be in data/ directory
+align.pdb
+
+#X, Y, and Z box lengths
+123.356 133.363 85.495
+
+#residues to hold during production separated by spaces
+88 473 858 1243
+
+#tleap scripts (1st line is stripped, 2nd line is full system)
+zanamivir_stripped_tleap_script
+zanamivir_tleap_script
+
+
