@@ -1,0 +1,73 @@
+#!/bin/bash
+#use this executable to run the clusters
+#the cluster directories must exist and the proper central.pdb and the file run_number need to be in the top cluster directory 
+#this must be run from a directory that holds the clusters and both a scripts/ and data/ directory
+
+if [ ! -d data ]; then
+	echo "Error ----> There is no data directory!!!"
+	exit
+fi
+
+if [ ! -d scripts ]; then
+	echo "Error ----> There is no scripts directory!!!"
+	exit
+fi
+
+if [ ! -e data/input_parameters ]; then
+	echo "Error ----> Cannot find data/input_parameters!!!"
+	exit
+fi
+
+ALIGN_PDB=`grep -A1 "clusters" data/input_parameters | tail -1`
+if [ ! -e data/$ALIGN_PDB ]; then
+	echo "Error ----> Cannot find pdb file that clusters were aligned over!!!"
+	echo "data/input_parameters thinks it should be data/'$ALIGN_PDB'"
+	exit
+fi
+
+TETRAMER_PDB=`grep -A1 "ligands" data/input_parameters | tail -1`
+if [ ! -e data/$TETRAMER_PDB ]; then
+	echo "Error ----> Cannot find full system pdb file!!!"
+	echo "data/input_parameters thinks it should be data/'$TETRAMER_PDB'"
+	exit
+fi
+
+QUEUE=`grep -A1 "production queue" data/input_parameters | tail -1`
+if [ "$QUEUE" != "gpup" ] && [ "$QUEUE" != "gpu" ]; then
+	echo "Error ---> No acceptable queue chosen!!!"
+        echo "The queue choice in data/input_parameters should be \"gpup\" or \"gpu\""
+	exit
+fi
+
+#copy and paste the clusters you want to run at the top of the for loop
+# 1A 1B 1C 1D 2A 2B 2C 2D 3A 3B 3C 3D 4A 4B 4C 4D 5A 5B 5C 5D 6A 6B 6C 6D 7A 7B 7C 7D 8A 8B 8C 8D 9A 9B 9C 9D 10A 10B 10C 10D
+for clust in 5A 5B 5C 5D 6A 6B 6C 6D 7A 7B 7D 8A 8C 9C; do
+	
+	if [ ! -d $clust ]; then
+		echo "Error ----> There is no $clust directory!!!"
+		exit
+	fi
+	
+	if [ ! -e $clust/central.pdb ]; then
+		echo "Error ----> Cannot find $clust/central.pdb!!!"
+		exit
+	fi
+	
+	if [ ! -e $clust/run_number ]; then
+		echo "Error ----> Cannot find $clust/run_number!!!"
+		exit
+	fi
+	
+	VAL=`head -1 $clust/run_number`
+	echo "Starting setup for ----> Cluster: $clust; Run #: $VAL"
+	DIR=$clust/$VAL
+	if [ -d $DIR ]; then
+		echo "Error ----> Directory $DIR already exists!!!"
+		exit
+	fi
+	mkdir -p $DIR/setup
+	E_DIR=`pwd`
+	cd $DIR/setup
+	$E_DIR/scripts/RUN.bsh $E_DIR $QUEUE
+	cd $E_DIR	
+done
