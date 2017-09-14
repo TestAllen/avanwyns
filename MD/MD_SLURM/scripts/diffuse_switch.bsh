@@ -1,0 +1,11 @@
+#!/bin/bash
+
+FILE="nums$1.txt"
+NUM=`grep -c "^0" $FILE`
+        if [ $NUM -gt 50 ]; then
+                echo "$1 diffused"
+		sed -i ''$2','$2' s/.*/0 '$1' diffused/' SWITCH 
+        else
+                echo "$1 not diffused"
+	fi
+exit
