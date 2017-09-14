@@ -1,0 +1,101 @@
+#!/bin/bash
+#SBATCH --mail-type=ALL
+#SBATCH -o %j.err
+
+date
+
+#necessary if modules are to be used
+source /usr/share/Modules/init/bash
+
+cd $SLURM_SUBMIT_DIR
+
+#######VARIABLES########
+S_DIR="$E_DIR/scripts"
+D_DIR="$E_DIR/data"
+USER=`whoami`
+LABEL=`pwd | sed 's|'$E_DIR'/||' | sed 's|/equilibration/mdwat||' | sed 's|/|_|'`
+
+#don't need if only running on gpus
+#PROD_NODE=`grep -A4 "processors" $D_DIR/input_parameters | tail -1 | awk '{print $1}'`
+#PROD_PPN=`grep -A4 "processors" $D_DIR/input_parameters | tail -1 | awk '{print $2}'`
+WALLTIME=`grep -A3 "walltime" $D_DIR/input_parameters | tail -1`
+PROD_JOB="prod_$LABEL"
+
+RES_1=`grep -A1 "residues to hold during production" $D_DIR/input_parameters | tail -1 | awk '{print $1}'`
+RES_2=`grep -A1 "residues to hold during production" $D_DIR/input_parameters | tail -1 | awk '{print $2}'`
+RES_3=`grep -A1 "residues to hold during production" $D_DIR/input_parameters | tail -1 | awk '{print $3}'`
+RES_4=`grep -A1 "residues to hold during production" $D_DIR/input_parameters | tail -1 | awk '{print $4}'`
+
+RUN="mdwat"
+OLD="../minwat/minwat.rst"
+PRMTOP="$D_DIR/ligand_at_sites.prmtop"
+REF="../../setup/ligand_at_sites.inpcrd"
+
+AMBER_DYN_V=`grep -A1 "dynamics" $D_DIR/input_parameters | tail -1`
+#don't need if only running on gpus
+#MPI="mpiexec"
+EXE="pmemd.cuda"
+#########END VARIABLES##########
+
+#don't need if only running on gpus
+#echo $SLURM_JOB_NODELIST
+#NODES=`scontrol show hostnames $SLURM_JOB_NODELIST | wc -l`
+#echo $NODES
+#echo $SLURM_NTASKS_PER_NODE
+#CORES=$((NODES*SLURM_NTASKS_PER_NODE))
+#echo $CORES
+
+module unload amber
+module unload mvapich2-2.2
+module load amber/$AMBER_DYN_V
+module list
+nvidia-smi
+
+#$MPI -np $CORES $EXE -O -i $RUN.in -o $RUN.out -p $PRMTOP -c $OLD -r $RUN.rst -x $RUN.mdcrd -ref $REF
+$EXE -O -i $RUN.in -o $RUN.out -p $PRMTOP -c $OLD -r $RUN.rst -x $RUN.mdcrd -ref $REF
+
+rm mdinfo mdwat.in
+
+if [ ! -e $RUN.rst ]; then
+                echo "Error ----> $RUN.rst was not found!!!"
+                ssh skylight 'echo "Error ----> '$RUN'.rst was not found!" | mail -s "mdwat '$LABEL' failed" '$USER'@hamilton.edu'
+		exit
+fi
+
+if ! tail -1 mdwat.out | grep -q "Total wall time"; then
+        echo "Error ----> mdwat did not complete properly!!!"
+        ssh skylight 'echo "Error ----> mdwat did not complete properly!" | mail -s "mdwat '$LABEL' failed" '$USER'@hamilton.edu'
+        exit
+fi
+
+mkdir ../../production
+cd ../../production
+PROD_DIR=`pwd`
+
+sed 's/WWW/'$RES_1'/' < $S_DIR/prod.in > prod.in
+sed -i 's/XXX/'$RES_2'/' prod.in
+sed -i 's/YYY/'$RES_3'/' prod.in
+sed -i 's/ZZZ/'$RES_4'/' prod.in
+
+cp $S_DIR/prod.job .
+
+#sbatch can only take environmental variables as command line arguments, not shell variables, so you have to export anything you want to send 
+export E_DIR=$E_DIR
+export QUEUE=$QUEUE
+
+if [ "$QUEUE" == "una" ]; then
+#	ssh grid "cd $PROD_DIR && qsub -l walltime=$WALLTIME,nodes=$PROD_NODE:ppn=$PROD_PPN -M $USER@hamilton.edu -N $PROD_JOB -q $QUEUE prod.job -v E_DIR=$E_DIR,QUEUE=$QUEUE"
+	echo "Error ----> No una queue on skylight!!!"
+	ssh skylight 'echo "Error ----> No una queue on skylight!" | mail -s "prod '$LABEL' did not start" '$USER'@hamilton.edu'
+	exit
+elif [ "$QUEUE" == "gpu" ] || [ "$QUEUE" == "gpup" ]; then
+        sbatch -t $WALLTIME --gres=gpu:1 --mail-user=$USER@hamilton.edu --job-name="$PROD_JOB" --partition=$QUEUE prod.job --export=E_DIR,QUEUE
+	echo "$QUEUE submit" 
+else
+        echo "Error ---> No acceptable queue chosen!!!"
+	ssh skylight 'echo "Error ---> No acceptable queue chosen!" | mail -s "mdwat '$LABEL' failed" '$USER'@hamilton.edu'
+	exit
+fi
+
+date
+
