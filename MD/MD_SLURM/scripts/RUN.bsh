@@ -1,0 +1,134 @@
+#!/bin/bash
+
+#necessary if modules are to be used
+source /usr/share/Modules/init/bash
+
+
+#################VARIABLES######################
+#paths
+E_DIR=$1
+S_DIR="$E_DIR/scripts"
+D_DIR="$E_DIR/data"
+LABEL=`pwd | sed 's|'$E_DIR'/||' | sed 's|/setup||' | sed 's|/|_|'`
+QUEUE=$2
+
+#user
+USER=`whoami`
+
+#atom ranges of protein monomers
+TETRAMER_PDB=`grep -A1 "ligands" $D_DIR/input_parameters | tail -1`
+LAST_ATOM_1=`awk '/OXT/ {print substr($0,0,11); exit }' $D_DIR/$TETRAMER_PDB`
+LAST_ATOM_2=`awk '/OXT/ {print substr($0,0,11) }' $D_DIR/$TETRAMER_PDB | head -2 | tail -1`
+LAST_ATOM_3=`awk '/OXT/ {print substr($0,0,11) }' $D_DIR/$TETRAMER_PDB | head -3 | tail -1`
+LAST_ATOM_4=`awk '/OXT/ {print substr($0,0,11) }' $D_DIR/$TETRAMER_PDB | tail -1`
+
+#atom index of first ligand
+LIG_FIRST_ATOM=`awk '/ATOM/ {print substr($0,0,20); exit}' ../../central.pdb`
+
+#tleap information
+STRIP_TLEAP=`grep -A1 "tleap scripts" $D_DIR/input_parameters | tail -1`
+BOX_DIME=`grep -A1 "box lengths" $D_DIR/input_parameters | tail -1`
+FULL_TLEAP=`grep -A2 "tleap scripts" $D_DIR/input_parameters | tail -1`
+
+#minwat core info 
+MIN_NODE=`grep -A2 "processors" $D_DIR/input_parameters | tail -1 | awk '{print $1}'`
+MIN_PPN=`grep -A2 "processors" $D_DIR/input_parameters | tail -1 | awk '{print $2}'`
+MIN_WALLTIME=`grep -A1 "walltime" $D_DIR/input_parameters | tail -1`
+
+#AMBER version for prmtop generation
+AMBER_PRMTOP_V=`grep -A1 "prmtop" $D_DIR/input_parameters | tail -1` 
+#############END_VARIABLES######################
+
+#run pdbsetup.bsh which organizes the ligand pdbs
+$S_DIR/pdbsetup.bsh $E_DIR
+
+#renumber makes atom and residue indexes continuous and switches from hex to decimal
+$S_DIR/renumber $D_DIR/$TETRAMER_PDB > renumbered.pdb
+
+#puts aligned ligands with rest of system
+echo "Renumbering pdb file....."
+cat renumbered.pdb all_ligands.pdb > temp.pdb
+rm renumbered.pdb all_ligands.pdb
+
+#adds TER after each monomer and  ion and ligand
+echo "Adding TER's to pdb file....."
+sed -e '/'"$LAST_ATOM_1"'/a TER' -e '/'"$LAST_ATOM_2"'/a TER' -e '/'"$LAST_ATOM_3"'/a TER' -e '/'"$LAST_ATOM_4"'/a TER' -e '/Ca+ CAL /a TER' -e '/Cl- Cl-/a TER' -e '/Na+ Na+/a TER' -e '/'"$LIG_FIRST_ATOM"'/i TER' temp.pdb > temp2.pdb
+
+#fixes atom names to agree with given names in tleap script
+echo "Fixing atom names in pdb file..."
+sed -e 's/1H82/H821/' -e 's/2H82/H822/' -e 's/3H82/H823/' -e 's/1H81/H811/' -e 's/2H81/H812/' -e 's/1H8/H81/' -e 's/1H91/H911/' -e 's/2H91/H912/' -e 's/3H91/H913/' -e 's/1H9/H91/' -e 's/2H9/H92/' -e 's/1H6/H61/' -e 's/1H7/H71/' -e 's/1H3/H31/' -e 's/2H3/H32/' -e 's/1H4/H41/' -e 's/1H5/H51/' -e 's/1H11/H111/' -e 's/2H11/H112/' -e 's/3H11/H113/' temp2.pdb > ready_for_tleap.pdb
+
+rm temp.pdb temp2.pdb
+#unload any previously loaded amber or mvapich2-2.2 modules
+module unload amber
+module unload mvapich2-2.2
+#load amber module for prmtop generation
+module load amber/$AMBER_PRMTOP_V
+module list
+
+#create stripped prmtop---only need to do this once if you don't delete waters when introducing ligands
+if [ ! -e $D_DIR/stripped.prmtop ]; then
+	sed '/WAT/d' < ready_for_tleap.pdb > stripped.pdb
+	tleap -s -f $S_DIR/$STRIP_TLEAP
+	if [ ! -e stripped.prmtop ]; then
+		echo "Error ----> stripped.prmtop was not created!!!"
+		echo "Error ----> stripped.prmtop was not created!" | mail -s "$LABEL stripped.prmtop creation failed" $USER@hamilton.edu
+		exit
+	fi
+	rm stripped.pdb stripped.inpcrd
+	mv stripped.prmtop $D_DIR
+fi
+
+#need to create full system inpcrd----making prmtop is redundant
+sed 's/X Y Z/'"$BOX_DIME"'/' < $S_DIR/$FULL_TLEAP > tleap.script
+tleap -s -f tleap.script
+
+if [ ! -e ligand_at_sites.inpcrd ]; then
+	echo "Error ----> ligand_at_sites.inpcrd was not created!!!"
+        echo "Error ----> ligand_at_sites.inpcrd was not created!" | mail -s "$LABEL ligand_at_sites.inpcrd creation failed" $USER@hamilton.edu
+	exit
+fi
+
+if [ ! -e ligand_at_sites.prmtop ]; then 
+        echo "Error ----> ligand_at_sites.prmtop was not created!!!"
+        echo "Error ----> ligand_at_sites.prmtop was not created!" | mail -s "$LABEL ligand_at_sites.prmtop creation failed" $USER@hamilton.edu
+        exit    
+fi
+
+#check to see that new prmtop is the same as one in data directory. If no existing prmtop, copy new one to data directory
+if [ -e $D_DIR/ligand_at_sites.prmtop ]; then
+#checks if the older and newly generated prmtops are different, excepting first line, which has time/date
+	diff -q <(tail -n +2 $D_DIR/ligand_at_sites.prmtop) <(tail -n +2 ligand_at_sites.prmtop)
+# the "$?" in the if statement below means: "output from last command"
+        if [ $? -ne 0 ]; then
+                echo "WARNING!!!----->The currently generated ligand_at_sites.prmtop is different than the one in the data directory!!!!"
+        	echo "WARNING!!!----->The currently generated ligand_at_sites.prmtop is different than the one in the data directory!!!!" | mail -s "$LABEL new ligand_at_sites.prmtop is different from previous one in data directory" $USER@hamilton.edu
+		exit
+	else
+                rm ligand_at_sites.prmtop       
+        fi
+else
+        mv ligand_at_sites.prmtop $D_DIR
+fi
+
+rm tleap.script
+
+#makes equilibraion and minwat directories
+mkdir -p ../equilibration/minwat
+cd ../equilibration/minwat
+
+#moves the inputs for water minimization into the minwat directory
+cp $S_DIR/minwat.in ./
+cp $S_DIR/minwat.job .
+
+# setup variables for submission
+MIN_DIR=`pwd`
+JOB="minwat_$LABEL"
+#sbatch can only take environmental variables as command line arguments, not shell variables, so you have to export anything you want to send 
+export E_DIR=$E_DIR
+export QUEUE=$QUEUE
+
+#submit water minimization job
+#echo $MIN_NODE
+#echo $MIN_PPN
+sbatch --mail-user=$USER@hamilton.edu -t $MIN_WALLTIME --nodes=$MIN_NODE --ntasks-per-node=$MIN_PPN --job-name="$JOB" minwat.job --export=E_DIR,QUEUE
