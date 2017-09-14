@@ -1,0 +1,25 @@
+#!/bin/bash
+#SBATCH --partition=stdmem
+#SBATCH --mail-type=ALL
+#SBATCH -o %j.err
+
+source /usr/share/Modules/init/bash
+date
+
+cd $SLURM_SUBMIT_DIR
+
+#NSLOTS=`grep -c "" $PBS_NODEFILE`
+#EXE="cpptraj.MPI"
+
+
+#loading amber for master_trajin.job
+module unload amber
+module unload mvapich2-2.2
+module load amber/16
+module list
+
+cpptraj -p  data/complex_GB.prmtop -i data/maketotal-traj
+
+
+
+date

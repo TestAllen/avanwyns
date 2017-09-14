@@ -1,0 +1,27 @@
+#!/bin/bash
+#SBATCH --partition=stdmem
+#SBATCH --mail-type=ALL
+#SBATCH -o %j.err
+
+source /usr/local/global/etc/global.login.sh
+date
+cd $SLURM_SUBMIT_DIR
+
+vmd -dispdev text -e centmass.tcl
+
+x=0
+while [ $x -lt YYY ]; do
+        cat centmass_$x >>centmass_tot
+        rm centmass_$x
+        let x=$x+1
+done
+
+mkdir $T_DIR/../mapping/mmpbsa_output/map_output
+cp centmass_tot $T_DIR/../mapping/mmpbsa_output
+
+rm $T_DIR/$BASENAME-1.mdcrd
+rm $T_DIR/$BASENAME-2.mdcrd
+rm $T_DIR/$BASENAME-3.mdcrd
+rm $T_DIR/$BASENAME-4.mdcrd
+
+date

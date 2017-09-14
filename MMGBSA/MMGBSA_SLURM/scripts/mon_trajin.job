@@ -1,0 +1,25 @@
+#!/bin/bash
+
+#SBATCH --partition=stdmem
+#SBATCH --mail-type=ALL
+#SBATCH -o %j.err
+
+date
+cd $SLURM_SUBMIT_DIR
+#echo $PBS_JOBID >data/MONXXX.ID
+
+#MPI="mpiexec"
+#NSLOTS=`grep -c "" $PBS_NODEFILE`
+#EXE="cpptraj.MPI"
+
+
+#loading amber for trajin.job
+source /usr/share/Modules/init/bash
+module unload amber
+module unload mvapich2-2.2
+module load amber/16
+module list
+
+cpptraj -p  data/stripped.prmtop -i data/monXXX-traj
+
+date
