@@ -1,0 +1,25 @@
+#!/bin/bash
+
+#PBS -q una
+#PBS -m be
+#PBS -j oe
+#PBS -r n
+
+source /usr/local/global/etc/global.login.sh
+date
+cd $PBS_O_WORKDIR
+#echo $PBS_JOBID >data/MONXXX.ID
+
+#MPI="mpiexec"
+#NSLOTS=`grep -c "" $PBS_NODEFILE`
+#EXE="cpptraj.MPI"
+
+
+#loading amber for trajin.job
+module unload amber
+module load amber/$AMBER_TRAJ_V
+module list
+
+cpptraj -p  data/stripped.prmtop -i data/monXXX-traj
+
+date
