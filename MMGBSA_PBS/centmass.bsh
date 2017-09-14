@@ -1,0 +1,16 @@
+#!/bin/bash
+#makes the centmass mdcrds for vmd mapping
+
+x=1
+y=1
+z=25000
+
+while [ "$x" -lt 11 ]
+do
+	sed -e "s/XXX/"$x"/g" -e "s/YYY/"$y"/g" -e "s/ZZZ/"$z"/g" centmass_template > centmass"$x"
+	cpptraj /usr/local/newhome/knash/MMGBSA_wt_zan/traj_scripts/complex_GB.prmtop centmass"$x"
+
+	x=`expr $x + 1`
+	y=`expr $y + 25000`
+	z=`expr $z + 25000`
+done
