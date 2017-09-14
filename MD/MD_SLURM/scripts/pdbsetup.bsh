@@ -1,0 +1,47 @@
+#!/bin/bash
+
+
+#################VARIABLES######################
+
+#paths
+E_DIR=$1
+S_DIR="$E_DIR/scripts"
+D_DIR="$E_DIR/data"
+
+#files
+#full system pdb
+TETRAMER_PDB=`grep -A1 "ligands" $D_DIR/input_parameters | tail -1`
+#file clusters were aligned over
+ALIGN_PDB=`grep -A1 "clusters" $D_DIR/input_parameters | tail -1`
+
+#residue ranges
+LAST_1=`awk '/OXT/ {print substr($0,23,4); exit }' $D_DIR/$TETRAMER_PDB`
+LAST_2=`awk '/OXT/ {print substr($0,23,4) }' $D_DIR/$TETRAMER_PDB | head -2 | tail -1`
+LAST_3=`awk '/OXT/ {print substr($0,23,4) }' $D_DIR/$TETRAMER_PDB | head -3 | tail -1`
+LAST_4=`awk '/OXT/ {print substr($0,23,4) }' $D_DIR/$TETRAMER_PDB | tail -1`
+
+FIRST_1=`awk '/ATOM/ {print substr($0,23,4); exit }' $D_DIR/$TETRAMER_PDB`
+FIRST_2=$((LAST_1+1))
+FIRST_3=$((LAST_2+1))
+FIRST_4=$((LAST_3+1))
+
+#############END_VARIABLES######################
+
+
+#align ligand over each of the 4 monomers
+vmd -dispdev text -e $S_DIR/align.tcl -args $FIRST_1 $LAST_1 1 $D_DIR/$ALIGN_PDB $D_DIR/$TETRAMER_PDB
+vmd -dispdev text -e $S_DIR/align.tcl -args $FIRST_2 $LAST_2 2 $D_DIR/$ALIGN_PDB $D_DIR/$TETRAMER_PDB
+vmd -dispdev text -e $S_DIR/align.tcl -args $FIRST_3 $LAST_3 3 $D_DIR/$ALIGN_PDB $D_DIR/$TETRAMER_PDB
+vmd -dispdev text -e $S_DIR/align.tcl -args $FIRST_4 $LAST_4 4 $D_DIR/$ALIGN_PDB $D_DIR/$TETRAMER_PDB
+
+sed -i 's/   1   /   2   /' ligand2.pdb
+sed -i 's/   1   /   3   /' ligand3.pdb
+sed -i 's/   1   /   4   /' ligand4.pdb
+
+#create ligand file
+cat ligand[1-4].pdb > all_ligands.pdb
+rm ligand[1-4].pdb
+
+sed -i '/END/d' all_ligands.pdb 
+sed -i '/CRYST1/d' all_ligands.pdb
+sed -i '/REMARK/d' all_ligands.pdb
