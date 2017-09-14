@@ -1,0 +1,39 @@
+
+&cntrl
+  nmropt = 0,       imin = 0,
+  ntx    = 5,       irest  = 1,       ntrx = 1,      ntxo   = 1,
+  ntpr   = 1000,    ntwx   = 2500,     ntwv = 0,      ntwe   = 0,
+  ntwr   = 10000,   
+
+  ntf    = 2,       ntb    = 2,
+  cut    = 8.0,    nsnb   = 20,
+
+  nstlim = 2500000,   nscm   = 2500,   iwrap = 0,
+  t      = 0.0,     dt     = 0.002,
+
+  temp0  = 300.0,    tautp=0.5,
+  tempi  = 300.0,    ntt   = 1,
+
+  ntp    = 2,       taup = 1.0,
+  ntc    = 2,       tol    = 0.00001,
+
+  ibelly=0, ntr=1,
+&end
+Slight hold on the center tyrosines
+1.0
+RES WWW
+END
+Space
+1.0
+RES XXX
+END
+More Space
+1.0
+RES YYY
+END
+Even more space
+1.0
+RES ZZZ
+END
+END
+
