@@ -1,0 +1,33 @@
+#!/bin/bash
+
+#PBS -q una
+#PBS -m be
+#PBS -j oe
+#PBS -r n
+
+date
+
+module unload amber
+module unload mpi
+module load amber/$AMBER_TRAJ_V
+module load mpi/mvapich2-x86_64
+module list
+
+MPI="mpiexec"
+EXE="MMPBSA.py.MPI"
+INTERFACE="-iface ib0"
+NSLOTS=`grep -c "" $PBS_NODEFILE`
+
+echo $NSLOTS
+cd $PBS_O_WORKDIR
+cat $PBS_NODEFILE
+
+
+$MPI -np $NSLOTS $INTERFACE $EXE -O -i $T_DIR/scripts/mmgbsa.in -cp $T_DIR/data/complex_GB.prmtop -rp $T_DIR/data/receptor_GB.prmtop -lp $T_DIR/data/ligand_GB.prmtop -y $T_DIR/master.mdcrd -o FINAL_RESULTS_MMPBSA.dat -do FINAL_DECOMP_MMPBSA.dat
+
+
+
+date
+
+
+
