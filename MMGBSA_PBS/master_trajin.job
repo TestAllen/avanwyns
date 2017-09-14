@@ -1,0 +1,26 @@
+#!/bin/bash
+
+#PBS -q una
+#PBS -m be
+#PBS -j oe
+#PBS -r n
+
+source /usr/local/global/etc/global.login.sh
+date
+cd $PBS_O_WORKDIR
+
+#MPI="mpiexec"
+#NSLOTS=`grep -c "" $PBS_NODEFILE`
+#EXE="cpptraj.MPI"
+
+
+#loading amber for master_trajin.job
+module unload amber
+module load amber/$AMBER_TRAJ_V
+module list
+
+cpptraj -p  data/complex_GB.prmtop -i data/maketotal-traj
+
+
+
+date
