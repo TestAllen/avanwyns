@@ -1,0 +1,3 @@
+strip !:WWW-XXX,YYY,ZZZ
+rms first @CA
+trajout monomerAAA_lig_strip.mdcrd 
