@@ -1,0 +1,92 @@
+#!/bin/bash
+#SBATCH --partition=stdmem
+#SBATCH --mail-type=ALL
+#SBATCH -o %j.err
+
+date
+
+#necessary if modules are to be used
+source /usr/share/Modules/init/bash
+
+cd $SLURM_SUBMIT_DIR
+
+#######VARIABLES########
+S_DIR="$E_DIR/scripts"
+D_DIR="$E_DIR/data"
+USER=`whoami`
+LABEL=`pwd | sed 's|'$E_DIR'/||' | sed 's|/equilibration/minwat||' | sed 's|/|_|'`
+
+MD_JOB="mdwat_$LABEL"
+#MD_NODE=`grep -A3 "processors" $D_DIR/input_parameters | tail -1 | awk '{print $1}'`
+#MD_PPN=`grep -A3 "processors" $D_DIR/input_parameters | tail -1 | awk '{print $2}'`
+MD_WALLTIME=`grep -A2 "walltime" $D_DIR/input_parameters | tail -1`
+
+RUN="minwat"
+OLD="../../setup/ligand_at_sites.inpcrd"
+PRMTOP="$D_DIR/ligand_at_sites.prmtop"
+REF="../../setup/ligand_at_sites.inpcrd"
+
+AMBER_DYN_V=`grep -A1 "dynamics" $D_DIR/input_parameters | tail -1`
+MPI="mpiexec"
+EXE="pmemd.MPI"
+#########END VARIABLES#######
+
+echo $SLURM_JOB_NODELIST
+NODES=`scontrol show hostnames $SLURM_JOB_NODELIST | wc -l`
+CORES=$((NODES*SLURM_NTASKS_PER_NODE))
+echo $NODES
+echo $SLURM_NTASKS_PER_NODE
+echo $CORES
+
+module unload amber
+module unload mvapich2-2.2
+module load amber/$AMBER_DYN_V
+module list
+
+$MPI -np $CORES $EXE -O -i $RUN.in -o $RUN.out -p $PRMTOP -c $OLD -r $RUN.rst -x $RUN.mdcrd -ref $REF
+
+rm mdinfo logfile minwat.in
+
+if [ ! -e $RUN.rst ]; then
+	echo "Error ----> $RUN.rst was not found!!!"
+	ssh skylight 'echo "Error ----> '$RUN'.rst was not found!" | mail -s "minwat '$LABEL' failed" '$USER'@hamilton.edu'
+        exit
+fi
+
+if ! tail -1 minwat.out | grep -q "Total wall time"; then
+	echo "Error ----> minwat did not complete properly!!!"
+	ssh skylight 'echo "Error ----> minwat did not complete properly!" | mail -s "minwat '$LABEL' failed" '$USER'@hamilton.edu'
+	exit
+fi
+
+mkdir ../mdwat
+cd ../mdwat
+MDWAT_DIR=`pwd`
+
+cp $S_DIR/mdwat.in .
+cp $S_DIR/mdwat.job .
+
+#sbatch can only take environmental variables as command line arguments, not shell variables, so you have to export anything you want to send 
+export E_DIR=$E_DIR
+export QUEUE=$QUEUE
+
+#echo $MD_NODE
+#echo $MD_PPN
+#sbatch --mail-user=$USER@hamilton.edu -t $MD_WALLTIME --nodes=$MD_NODE --ntasks-per-node=$MD_PPN --job-name="$MD_JOB" mdwat.job --export=E_DIR,QUEUE
+
+
+if [ "$QUEUE" == "una" ]; then
+        echo "Error ----> No una queue on skylight!!!"
+        ssh skylight 'echo "Error ----> No una queue on skylight!" | mail -s "prod '$LABEL' did not start" '$USER'@hamilton.edu'
+        exit
+elif [ "$QUEUE" == "gpu" ] || [ "$QUEUE" == "gpup" ]; then
+	sbatch --mail-user=$USER@hamilton.edu -t $MD_WALLTIME --gres=gpu:1 --job-name="$MD_JOB" --partition=$QUEUE mdwat.job --export=E_DIR,QUEUE
+        echo "$QUEUE submit" 
+else
+        echo "Error ---> No acceptable queue chosen!!!"
+        ssh skylight 'echo "Error ---> No acceptable queue chosen!" | mail -s "mdwat '$LABEL' failed" '$USER'@hamilton.edu'
+        exit
+fi
+
+date
+
